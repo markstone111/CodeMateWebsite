@@ -14,10 +14,11 @@ const redis = new Redis({
   token: process.env.CodeMateRAG_KV_REST_API_TOKEN,
 });
 
-// Create a sliding window ratelimiter (10 requests per hour per IP)
+// Create a sliding window ratelimiter (30 requests per minute per IP)
 const ratelimit = new Ratelimit({
   redis: redis,
-  limiter: Ratelimit.slidingWindow(10, "1 h"),
+  limiter: Ratelimit.slidingWindow(30, "1 m"),
+  prefix: "@upstash/ratelimit/v2"
 });
 
 // Cache the embedding pipeline outside the handler for warm starts
@@ -65,17 +66,19 @@ export default async function handler(req, res) {
     // 4. Query Pinecone
     const queryResponse = await index.query({
       vector: embeddingArray,
-      topK: 3,
+      topK: 6,
       includeMetadata: true
     });
     
     const context = queryResponse.matches.map(m => m.metadata.text).join('\n\n');
 
     // 5. Query OpenRouter API
-    const systemPrompt = `You are a helpful and friendly assistant for CodeMate, a tech community. 
+    const systemPrompt = `You are a helpful and professional assistant for CodeMate, a tech community. 
 Your goal is to answer questions about CodeMate based strictly on the provided context. 
 If the answer is not in the context, politely say that you don't have that information.
 Keep your answers concise, professional, and friendly.
+CRITICAL INSTRUCTION 1: Do NOT start your response with "Hello!", "Hi!", or any similar greetings. Just provide the answer directly.
+CRITICAL INSTRUCTION 2: You represent CodeMate. Always use "we", "us", and "our" when referring to CodeMate (e.g., "our contact section", not "their website").
 
 Context:
 ${context}`;
